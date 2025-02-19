@@ -20,8 +20,7 @@ jobs:
           distribution: 'Temurin'
 
       - name: Setup env
-        env:
-          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+        run: export ANDROID_SDK_ROOT=${{ github.workspace }}/android-sdk
 
       - name: Android SDK Command-line Tools 설치
         uses: android-actions/setup-android-sdk@v2
@@ -45,3 +44,4 @@ jobs:
         with:
           name: debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+```
