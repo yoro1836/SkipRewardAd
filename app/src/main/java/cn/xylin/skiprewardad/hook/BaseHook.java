@@ -36,7 +36,7 @@ public abstract class BaseHook {
     }
     
     protected boolean isDebug() {
-        return false;
+        return true;
     }
     
     protected final boolean isHooked(String clsName) {
