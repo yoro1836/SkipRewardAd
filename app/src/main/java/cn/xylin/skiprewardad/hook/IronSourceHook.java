@@ -7,6 +7,7 @@ import de.robv.android.xposed.XposedHelpers;
 
 public class IronSourceHook extends BaseHook {
     private Object listener;
+    private boolean isHooked = false;
 
     public IronSourceHook(Context ctx) {
         super(ctx);
@@ -14,43 +15,70 @@ public class IronSourceHook extends BaseHook {
 
     @Override
     protected void runHook() throws Throwable {
-        claza = findClass("com.ironsource.mediationsdk.IronSource");
-        clazb = findClass("com.ironsource.mediationsdk.sdk.RewardedVideoListener");
-        Class<?> placementClass = findClass("com.ironsource.mediationsdk.model.Placement");
+        tryHook(context.getClassLoader());
 
-        if (claza == null || clazb == null) {
-            log("IronSource class or listener not found.");
+        if (!isHooked) {
+            XposedHelpers.findAndHookMethod(ClassLoader.class, "loadClass", String.class, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                    if (isHooked) return;
+                    if (param.hasThrowable()) return;
+
+                    String className = (String) param.args[0];
+                    if ("com.ironsource.mediationsdk.IronSource".equals(className)) {
+                        log("IronSource class detected via detected loadClass. Initializing hooks...");
+                        tryHook((ClassLoader) param.thisObject);
+                    }
+                }
+            });
+        }
+    }
+
+    private void tryHook(ClassLoader classLoader) {
+        if (isHooked) return;
+
+        Class<?> ironSourceClass = XposedHelpers.findClassIfExists("com.ironsource.mediationsdk.IronSource", classLoader);
+        Class<?> listenerClass = XposedHelpers.findClassIfExists("com.ironsource.mediationsdk.sdk.RewardedVideoListener", classLoader);
+        Class<?> placementClass = XposedHelpers.findClassIfExists("com.ironsource.mediationsdk.model.Placement", classLoader);
+
+        if (ironSourceClass == null || listenerClass == null) {
             return;
         }
 
-        XposedBridge.hookAllMethods(claza, "setRewardedVideoListener", new XC_MethodHook() {
+        XposedBridge.hookAllMethods(ironSourceClass, "setRewardedVideoListener", new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                if (param.args.length > 0 && clazb.isInstance(param.args[0])) {
+                if (param.args.length > 0 && listenerClass.isInstance(param.args[0])) {
                     listener = param.args[0];
-                    log("IronSource listener captured.");
+                    log("IronSource listener captured!");
                 }
             }
         });
 
-        XposedBridge.hookAllMethods(claza, "showRewardedVideo", new XC_MethodHook() {
+        XposedBridge.hookAllMethods(ironSourceClass, "showRewardedVideo", new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 if (listener != null) {
                     log("IronSource showRewardedVideo intercepted. Skipping ad...");
+
                     Object fakePlacement = null;
                     if (placementClass != null) {
                         fakePlacement = XposedHelpers.newInstance(placementClass, "Reward", "VirtualItem", 1);
                     }
+
                     callMethod(listener, "onRewardedVideoAdOpened");
                     callMethod(listener, "onRewardedVideoAdRewarded", fakePlacement);
                     callMethod(listener, "onRewardedVideoAdClosed");
+
                     param.setResult(null);
                 } else {
-                    log("IronSource listener is null.");
+                    log("IronSource listener is null. Cannot skip.");
                 }
             }
         });
+
+        isHooked = true;
+        log("IronSourceHook setup completed.");
     }
 
     @Override
